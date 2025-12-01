@@ -2,6 +2,9 @@
 
 Results : 
 
+
+LIME : 
+
 | Feature            | Contribution |
 | ------------------ | ------------ |
 | **capital.gain**   | **+0.2731**  |
