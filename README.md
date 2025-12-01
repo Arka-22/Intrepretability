@@ -2,34 +2,39 @@
 
 Results : 
 
-LIME : 
-
-LIME Feature Contributions:
-capital.gain: +0.2731
-education.num: +0.0996
-hours.per.week: +0.0731
-age: +0.0727
-capital.loss: +0.0537
-fnlwgt: +0.0057
+| Feature            | Contribution |
+| ------------------ | ------------ |
+| **capital.gain**   | **+0.2731**  |
+| **education.num**  | +0.0996      |
+| **hours.per.week** | +0.0731      |
+| **age**            | +0.0727      |
+| **capital.loss**   | +0.0537      |
+| **fnlwgt**         | +0.0057      |
 
 
 
 
 CAPTUM : 
 
+Integrated Gradient 
 
-Integrated Gradients:
-age: -0.231091
-fnlwgt: +0.048133
-education.num: +0.018453
-capital.gain: +0.137857
-capital.loss: +0.005876
-hours.per.week: +0.021670
+| Feature            | Attribution |
+| ------------------ | ----------- |
+| **age**            | **−0.2311** |
+| **fnlwgt**         | +0.0481     |
+| **education.num**  | +0.0185     |
+| **capital.gain**   | +0.1379     |
+| **capital.loss**   | +0.0059     |
+| **hours.per.week** | +0.0217     |
 
-SmoothGrad:
-age: -0.216925
-fnlwgt: +0.036798
-education.num: +0.023049
-capital.gain: +0.126489
-capital.loss: +0.013379
-hours.per.week: +0.02078
+
+SmoothGrad
+
+| Feature            | Attribution |
+| ------------------ | ----------- |
+| **age**            | **−0.2169** |
+| **fnlwgt**         | +0.0368     |
+| **education.num**  | +0.0230     |
+| **capital.gain**   | +0.1265     |
+| **capital.loss**   | +0.0134     |
+| **hours.per.week** | +0.0208     |
