@@ -1,5 +1,9 @@
 # Intrepretability
 
+model.pth - includes weights for the two layer NN
+
+
+
 Results : 
 
 
