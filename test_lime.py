@@ -4,18 +4,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from datasets import load_dataset
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
 from lime.lime_tabular import LimeTabularExplainer
 import matplotlib.pyplot as plt
+import pickle
+from sklearn.model_selection import train_test_split
+
 
 # DEVICE
 device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-print(" device:", device)
+print("Using device:", device)
 
 
-# Model 
-
+# ----------------------------
+# MODEL
+# ----------------------------
 class TwoLayerNN(nn.Module):
     def __init__(self, input_dim, hidden_dim=32):
         super().__init__()
@@ -26,89 +28,39 @@ class TwoLayerNN(nn.Module):
         return self.fc2(F.relu(self.fc1(x)))
 
 
-# data preprocess
-
-def load_numeric_data(test_size=0.2):
+# ----------------------------
+# LOAD RAW DATA
+# ----------------------------
+def load_raw_data(numeric_cols):
 
     ds = load_dataset("AiresPucrs/adult-census-income")["train"]
     df = ds.to_pandas().replace("?", np.nan).dropna()
 
-    # label
     y = (df["income"] == ">50K").astype(int).values
-
-    # correct numeric columns for THIS dataset
-    numeric_cols = [
-        "age",
-        "fnlwgt",
-        "education.num",
-        "capital.gain",
-        "capital.loss",
-        "hours.per.week"
-    ]
-
     X_raw = df[numeric_cols].copy()
 
     X_train_raw, X_test_raw, y_train, y_test = train_test_split(
-        X_raw, y, test_size=test_size, random_state=42
+        X_raw.values, y, test_size=0.2, random_state=42
     )
 
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train_raw).astype(np.float32)
-    X_test = scaler.transform(X_test_raw).astype(np.float32)
-
-    return (
-        X_train, X_test,
-        y_train, y_test,
-        numeric_cols, scaler
-    )
+    return X_train_raw, X_test_raw, y_train, y_test
 
 
-# Train
-
-def train_model(model, X_train, y_train, epochs=10, batch_size=256):
-    model.to(device)
-    model.train()
-
-    X = torch.tensor(X_train, dtype=torch.float32).to(device)
-    y = torch.tensor(y_train, dtype=torch.long).to(device)
-
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-    for e in range(epochs):
-        perm = torch.randperm(len(X))
-        Xs = X[perm]
-        ys = y[perm]
-
-        total_loss = 0.0
-        for i in range(0, len(Xs), batch_size):
-            xb = Xs[i:i+batch_size]
-            yb = ys[i:i+batch_size]
-
-            opt.zero_grad()
-            loss = F.cross_entropy(model(xb), yb)
-            loss.backward()
-            opt.step()
-
-            total_loss += loss.item()
-
-        print(f"Epoch {e+1}/{epochs}, Loss = {total_loss:.4f}")
-
-
-
-# Predict function for LIME
-
+# ----------------------------
+# PREDICT FUNCTION FOR LIME
+# ----------------------------
 def make_predict_fn(model):
     def predict_fn(x):
-        x = torch.tensor(np.array(x, dtype=np.float32), dtype=torch.float32).to(device)
+        x = torch.tensor(x, dtype=torch.float32).to(device)
         with torch.no_grad():
             probs = F.softmax(model(x), dim=1).cpu().numpy()
         return probs
     return predict_fn
 
 
-
-# Plot LIME
-
+# ----------------------------
+# LIME PLOTTING
+# ----------------------------
 def plot_lime(exp, feature_names):
     cid = exp.available_labels()[0]
     mp = exp.as_map()[cid]
@@ -119,23 +71,37 @@ def plot_lime(exp, feature_names):
 
     plt.figure(figsize=(8,5))
     plt.barh(labels[::-1], values[::-1])
-    plt.title("LIME Explanation (Numeric Features Only)")
+    plt.title("LIME Explanation (Numeric Features)")
     plt.tight_layout()
     plt.show()
 
 
+# ----------------------------
+# MAIN
+# ----------------------------
 if __name__ == "__main__":
 
-    X_train, X_test, y_train, y_test, numeric_cols, scaler = load_numeric_data()
+    # Load saved components
+    model_state = torch.load("model.pth", map_location=device)
+    scaler = pickle.load(open("scaler.pkl", "rb"))
+    numeric_cols = pickle.load(open("numeric_cols.pkl", "rb"))
 
-    print("Numeric columns:", numeric_cols)
-    print("Train shape:", X_train.shape)
+    # Rebuild model
+    model = TwoLayerNN(input_dim=len(numeric_cols))
+    model.load_state_dict(model_state)
+    model.to(device)
+    model.eval()
 
-    model = TwoLayerNN(input_dim=X_train.shape[1])
-    train_model(model, X_train, y_train, epochs=10)
+    # Load raw data
+    X_train_raw, X_test_raw, y_train, y_test = load_raw_data(numeric_cols)
+
+    # Apply saved scaler
+    X_train = scaler.transform(X_train_raw).astype(np.float32)
+    X_test = scaler.transform(X_test_raw).astype(np.float32)
 
     predict_fn = make_predict_fn(model)
 
+    # LIME Explainer
     explainer = LimeTabularExplainer(
         training_data=X_train,
         feature_names=numeric_cols,
