@@ -7,7 +7,7 @@ import pickle
 from datasets import load_dataset
 from captum.attr import IntegratedGradients, NoiseTunnel
 import matplotlib.pyplot as plt
-
+import seaborn as sns
 
 device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
 print("Running explanations on device:", device)
@@ -93,15 +93,117 @@ def explain_with_captum(model, X_test, feature_names, idx=10):
 # PLOT FUNCTION
 # ----------------------------
 def plot_attr(vals, feature_names, title):
-    order = np.argsort(np.abs(vals))
-    vals = np.array(vals)[order]
-    names = np.array(feature_names)[order]
+    vals = np.array(vals)
+    names = np.array(feature_names)
 
-    plt.figure(figsize=(8,5))
-    plt.barh(names, vals)
-    plt.title(title)
+    # Sort by absolute contribution
+    order = np.argsort(np.abs(vals))
+    vals = vals[order]
+    names = names[order]
+
+    # Color map: red = negative, blue = positive
+    colors = ["red" if v < 0 else "steelblue" for v in vals]
+
+    plt.figure(figsize=(9, 6))
+    bars = plt.barh(names, vals, color=colors)
+
+    # Add value numbers on bars
+    for bar, v in zip(bars, vals):
+        plt.text(
+            bar.get_width() + np.sign(v)*0.01,
+            bar.get_y() + bar.get_height()/2,
+            f"{v:.4f}",
+            va="center",
+            ha="left" if v > 0 else "right"
+        )
+
+    plt.title(title, fontsize=14)
+    plt.axvline(0, color="black", linewidth=0.8)
     plt.tight_layout()
     plt.show()
+
+
+
+def plot_comparison(ig_vals, sg_vals, feature_names):
+    df = pd.DataFrame({
+        "feature": feature_names,
+        "IG": ig_vals,
+        "SG": sg_vals
+    }).set_index("feature")
+
+    df = df.iloc[np.argsort(np.abs(df["IG"]))]  # sort by IG magnitude
+
+    plt.figure(figsize=(10,6))
+    df.plot(kind="barh", figsize=(10,6))
+    plt.title("Integrated Gradients vs SmoothGrad")
+    plt.xlabel("Attribution")
+    plt.tight_layout()
+    plt.show()
+
+def plot_heatmap(ig, sg, feature_names):
+    df = pd.DataFrame({
+        "IntegratedGradients": ig,
+        "SmoothGrad": sg
+    }, index=feature_names)
+
+    plt.figure(figsize=(6,6))
+    sns.heatmap(df, annot=True, cmap="coolwarm", center=0)
+    plt.title("Attribution Heatmap (IG vs SG)")
+    plt.tight_layout()
+    plt.show()
+
+def visualize_fc1_weights(model, feature_names):
+    W = model.fc1.weight.detach().cpu().numpy()   # shape: (hidden_dim, input_dim)
+
+    plt.figure(figsize=(12, 6))
+    sns.heatmap(W, cmap="coolwarm", center=0,
+                xticklabels=feature_names,
+                yticklabels=[f"H{i}" for i in range(W.shape[0])])
+    plt.title("Input → Hidden Layer (fc1) Weights")
+    plt.xlabel("Input Features")
+    plt.ylabel("Hidden Neurons")
+    plt.tight_layout()
+    plt.show()
+
+def visualize_fc2_weights(model):
+    W = model.fc2.weight.detach().cpu().numpy()  # shape (2, hidden_dim)
+
+    plt.figure(figsize=(10, 4))
+    sns.heatmap(W, cmap="coolwarm", center=0,
+                xticklabels=[f"H{i}" for i in range(W.shape[1])],
+                yticklabels=["class_0", "class_1"])
+    plt.title("Hidden → Output Layer (fc2) Weights")
+    plt.xlabel("Hidden Neurons")
+    plt.ylabel("Output Classes")
+    plt.tight_layout()
+    plt.show()
+
+def neuron_importance(model):
+    W = model.fc1.weight.detach().cpu().numpy()
+    norms = np.linalg.norm(W, axis=1)
+
+    plt.figure(figsize=(8,4))
+    plt.bar(range(len(norms)), norms)
+    plt.title("Hidden Neuron Importance (L2 Norm of Input Weights)")
+    plt.xlabel("Neuron")
+    plt.ylabel("Weight Norm")
+    plt.tight_layout()
+    plt.show()
+
+    return norms
+
+def visualize_full_weights(model, feature_names):
+    W1 = model.fc1.weight.detach().cpu().numpy()
+    W2 = model.fc2.weight.detach().cpu().numpy()
+
+    combined = np.vstack([W1, W2])  # stack to show all together
+
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(combined, cmap="coolwarm", center=0)
+    plt.title("Combined Weight Visualization (fc1 + fc2)")
+    plt.show()
+
+
 
 
 # ----------------------------
@@ -130,6 +232,11 @@ if __name__ == "__main__":
     # Run explanations
     ig, sg = explain_with_captum(model, X_test, numeric_cols, idx=10)
 
-    # Visualize
     plot_attr(ig, numeric_cols, "Integrated Gradients")
     plot_attr(sg, numeric_cols, "SmoothGrad")
+    plot_comparison(ig, sg, numeric_cols)
+    plot_heatmap(ig, sg, numeric_cols)
+    visualize_fc1_weights(model, numeric_cols)
+    visualize_fc2_weights(model)
+    neuron_importance(model)
+
